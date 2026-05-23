@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LockNotes - Mural de Notas Secreto</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { max-width: 600px; width: 100%; }
+        #tela-bloqueio { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+        .escondido { display: none !important; }
+        .card { background: var(--card-bg); padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; border: 1px solid #e2e8f0; }
+        input, textarea, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #cbd5e1; box-sizing: border-box; font-size: 14px; }
+        input:focus, textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
+        button { background-color: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+        button:hover { background-color: var(--primary-hover); }
+        .nota-item { background: #fff; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .btn-abrir { width: auto; margin: 0; background-color: #10b981; }
+        .btn-abrir:hover { background-color: #059669; }
+        
+        /* Estilo do Modal para exibir a nota aberta */
+        #modal-nota { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; }
+        .modal-conteudo { background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .btn-fechar { background-color: #ef4444; }
+        .btn-fechar:hover { background-color: #dc2626; }
+    </style>
+</head>
+<body>
+
+    <div id="tela-bloqueio">
+        <div class="card" style="background: #1e293b; text-align: center; width: 320px; border: none; color: white;">
+            <h2 style="margin-top: 0; color: #38bdf8;">🔒 LockNotes</h2>
+            <p>Digite a senha do site para entrar:</p>
+            <input type="password" id="senha-site" placeholder="Senha do site" style="background: #334155; color: white; border: 1px solid #475569;">
+            <button id="btn-entrar-site">Entrar</button>
+            <p id="erro-site" style="color: #f87171; font-weight: bold; margin-bottom: 0;"></p>
+        </div>
+    </div>
+
+    <div id="conteudo-site" class="container escondido">
+        <header style="text-align: center; margin-bottom: 30px;">
+            <h1 style="font-size: 2.5rem; margin-bottom: 5px; color: #0f172a;">🔒 LockNotes</h1>
+            <p style="color: #64748b; margin-top: 0;">Seu mural de notas criptografado por senhas</p>
+        </header>
+
+        <div class="card">
+            <h3 style="margin-top:0;">Criar Novo Bloco de Notas</h3>
+            <input type="text" id="nota-titulo" placeholder="Título da Nota">
+            <textarea id="nota-conteudo" placeholder="Escreva o conteúdo privado aqui..." rows="4"></textarea>
+            <input type="password" id="nota-senha" placeholder="Defina a senha DESTE bloco de notas">
+            <button id="btn-salvar-nota">Salvar no LockNotes</button>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top:0;">Blocos de Notas Disponíveis</h3>
+            <div id="lista-notas">Carregando notas do servidor...</div>
+        </div>
+    </div>
+
+    <div id="modal-nota" class="escondido">
+        <div class="modal-conteudo">
+            <h2 id="modal-titulo" style="margin-top: 0; color: #0f172a;"></h2>
+            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 15px 0;">
+            <p id="modal-texto" style="white-space: pre-wrap; word-wrap: break-word; color: #334155; line-height: 1.6;"></p>
+            <button id="btn-fechar-modal" class="btn-fechar">Fechar Nota</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, push, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // Suas configurações oficiais inseridas aqui:
+        const firebaseConfig = {
+            apiKey: "AIzaSyA43KwM30QEIVi5BrfHtUDb9IzS1__555I",
+            authDomain: "locknotes-769ec.firebaseapp.com",
+            databaseURL: "https://locknotes-769ec-default-rtdb.firebaseio.com",
+            projectId: "locknotes-769ec",
+            storageBucket: "locknotes-769ec.firebasestorage.app",
+            messagingSenderId: "1082351759209",
+            appId: "1:1082351759209:web:4c347d77266e17727cd7f8",
+            measurementId: "G-QTPTBS1W3S"
+        };
+
+        // Inicializa o Firebase e o Banco de Dados
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        // Configuração dos Eventos dos Botões (Necessário no formato type="module")
+        document.getElementById('btn-entrar-site').addEventListener('click', verificarSenhaSite);
+        document.getElementById('btn-salvar-nota').addEventListener('click', criarBlocoNota);
+        document.getElementById('btn-fechar-modal').addEventListener('click', fecharModal);
+
+        // 1. Verificar senha geral do LockNotes
+        function verificarSenhaSite() {
+            const senhaDigitada = document.getElementById('senha-site').value;
+            const senhaCorreta = "seilakkk"; // Altere aqui quando escolher a definitiva
+
+            if (senhaDigitada === senhaCorreta) {
+                document.getElementById('tela-bloqueio').classList.add('escondido');
+                document.getElementById('conteudo-site').classList.remove('escondido');
+                carregarNotas();
+            } else {
+                document.getElementById('erro-site').innerText = "Senha do site incorreta!";
+            }
+        }
+
+        // 2. Criar e Salvar bloco no Realtime Database
+        function criarBlocoNota() {
+            const titulo = document.getElementById('nota-titulo').value;
+            const conteudo = document.getElementById('nota-conteudo').value;
+            const senhaNota = document.getElementById('nota-senha').value;
+
+            if (!titulo || !conteudo || !senhaNota) {
+                alert("Por favor, preencha todos os campos para trancar a nota!");
+                return;
+            }
+
+            const notasRef = ref(database, 'notas');
+            const novaNotaRef = push(notasRef);
+            
+            set(novaNotaRef, {
+                titulo: titulo,
+                conteudo: conteudo,
+                senhaNota: senhaNota
+            }).then(() => {
+                alert("Bloco de notas trancado com sucesso!");
+                document.getElementById('nota-titulo').value = '';
+                document.getElementById('nota-conteudo').value = '';
+                document.getElementById('nota-senha').value = '';
+            }).catch(erro => {
+                console.error("Erro ao salvar no banco:", erro);
+            });
+        }
+
+        // 3. Listar as notas em tempo real
+        function carregarNotas() {
+            const notasRef = ref(database, 'notas');
+            onValue(notasRef, (snapshot) => {
+                const listaDiv = document.getElementById('lista-notas');
+                listaDiv.innerHTML = '';
+
+                if (!snapshot.exists()) {
+                    listaDiv.innerHTML = '<p style="color: #64748b;">Nenhuma nota criada no LockNotes ainda.</p>';
+                    return;
+                }
+
+                snapshot.forEach((childSnapshot) => {
+                    const idNota = childSnapshot.key;
+                    const dadosNota = childSnapshot.val();
+
+                    // Criando o elemento HTML da nota dinamicamente
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'nota-item';
+                    itemDiv.innerHTML = `
+                        <strong>🔒 ${dadosNota.titulo}</strong>
+                        <button class="btn-abrir">Desbloquear</button>
+                    `;
+                    
+                    // Adiciona o clique para abrir passando a ID
+                    itemDiv.querySelector('button').addEventListener('click', () => abrirNota(idNota));
+                    listaDiv.appendChild(itemDiv);
+                });
+            });
+        }
+
+        // 4. Pedir a senha da nota e exibir se estiver correta
+        function abrirNota(id) {
+            const notaEspecificaRef = ref(database, 'notas/' + id);
+            get(notaEspecificaRef).then((snapshot) => {
+                if (snapshot.exists()) {
+                    const nota = snapshot.val();
+                    const senhaDigitada = prompt(`Digite a senha definida para o bloco "${nota.titulo}":`);
+
+                    if (senhaDigitada === nota.senhaNota) {
+                        document.getElementById('modal-titulo').innerText = `📄 ${nota.titulo}`;
+                        document.getElementById('modal-texto').innerText = nota.conteudo;
+                        document.getElementById('modal-nota').classList.remove('escondido');
+                    } else if (senhaDigitada !== null) { 
+                        alert("❌ Senha incorreta para este bloco de notas!");
+                    }
+                }
+            });
+        }
+
+        // 5. Fechar o Modal
+        function fecharModal() {
+            document.getElementById('modal-nota').classList.add('escondido');
+            document.getElementById('modal-titulo').innerText = '';
+            document.getElementById('modal-texto').innerText = '';
+        }
+    </script>
+</body>
+</html>
