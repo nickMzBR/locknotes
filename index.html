@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LockNotjes</title>
+    <title>LockNotes - Mural de Notas Secreto</title>
     <style>
         :root {
             --primary: #2563eb;
@@ -17,7 +17,7 @@
         #tela-bloqueio { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
         .escondido { display: none !important; }
         .card { background: var(--card-bg); padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; border: 1px solid #e2e8f0; }
-        input, textarea, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #cbd5e1; box-sizing: border-box; font-size: 14px; }
+        input, textarea, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #cbd5e1; box-sizing: border-box; font-size: 14px; font-family: inherit; }
         input:focus, textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
         button { background-color: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; transition: background 0.2s; }
         button:hover { background-color: var(--primary-hover); }
@@ -25,11 +25,21 @@
         .btn-abrir { width: auto; margin: 0; background-color: #10b981; }
         .btn-abrir:hover { background-color: #059669; }
         
-        /* Estilo do Modal para exibir a nota aberta */
-        #modal-nota { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; }
-        .modal-conteudo { background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-        .btn-fechar { background-color: #ef4444; }
-        .btn-fechar:hover { background-color: #dc2626; }
+        /* MODAL EM TELA CHEIA */
+        #modal-nota { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #ffffff; display: flex; flex-direction: column; z-index: 999; box-sizing: border-box; }
+        .modal-header { background: #0f172a; color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h2 { margin: 0; font-size: 1.5rem; }
+        .modal-corpo { flex: 1; padding: 20px; display: flex; flex-direction: column; background: var(--bg); }
+        .modal-corpo textarea { flex: 1; resize: none; margin-bottom: 15px; padding: 15px; font-size: 16px; border: 1px solid #cbd5e1; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); }
+        .modal-rodape { display: flex; gap: 15px; padding: 20px; background: #ffffff; border-top: 1px solid #e2e8f0; }
+        
+        /* Cores dos botões da nota aberta */
+        .btn-salvar { background-color: #10b981; }
+        .btn-salvar:hover { background-color: #059669; }
+        .btn-apagar { background-color: #ef4444; width: auto; padding: 12px 25px; }
+        .btn-apagar:hover { background-color: #dc2626; }
+        .btn-fechar { background-color: #64748b; width: auto; padding: 12px 25px; }
+        .btn-fechar:hover { background-color: #475569; }
     </style>
 </head>
 <body>
@@ -65,19 +75,25 @@
     </div>
 
     <div id="modal-nota" class="escondido">
-        <div class="modal-conteudo">
-            <h2 id="modal-titulo" style="margin-top: 0; color: #0f172a;"></h2>
-            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 15px 0;">
-            <p id="modal-texto" style="white-space: pre-wrap; word-wrap: break-word; color: #334155; line-height: 1.6;"></p>
-            <button id="btn-fechar-modal" class="btn-fechar">Fechar Nota</button>
+        <div class="modal-header">
+            <h2 id="modal-titulo">📄 Título da Nota</h2>
+            <button class="btn-apagar" id="btn-apagar-nota">🗑️ Apagar Nota</button>
+        </div>
+        <div class="modal-corpo">
+            <label style="font-weight: bold; margin-bottom: 5px; color: #475569;">Conteúdo da Nota (Edite abaixo para alterar):</label>
+            <textarea id="modal-texto" placeholder="O conteúdo está vazio..."></textarea>
+        </div>
+        <div class="modal-rodape">
+            <button class="btn-salvar" id="btn-atualizar-nota">💾 Salvar Alterações</button>
+            <button class="btn-fechar" id="btn-fechar-modal">Voltar</button>
         </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, push, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, push, set, onValue, get, remove, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // Suas configurações oficiais inseridas aqui:
+        // Suas configurações do Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyA43KwM30QEIVi5BrfHtUDb9IzS1__555I",
             authDomain: "locknotes-769ec.firebaseapp.com",
@@ -89,19 +105,23 @@
             measurementId: "G-QTPTBS1W3S"
         };
 
-        // Inicializa o Firebase e o Banco de Dados
         const app = initializeApp(firebaseConfig);
         const database = getDatabase(app);
 
-        // Configuração dos Eventos dos Botões (Necessário no formato type="module")
+        // Controlar qual nota está aberta no momento
+        let idNotaAtiva = null;
+
+        // Configuração dos Eventos
         document.getElementById('btn-entrar-site').addEventListener('click', verificarSenhaSite);
         document.getElementById('btn-salvar-nota').addEventListener('click', criarBlocoNota);
         document.getElementById('btn-fechar-modal').addEventListener('click', fecharModal);
+        document.getElementById('btn-atualizar-nota').addEventListener('click', salvarAlteracoesNota);
+        document.getElementById('btn-apagar-nota').addEventListener('click', apagarNota);
 
-        // 1. Verificar senha geral do LockNotes
+        // 1. Verificar senha do site
         function verificarSenhaSite() {
             const senhaDigitada = document.getElementById('senha-site').value;
-            const senhaCorreta = "seilakkk"; // Altere aqui quando escolher a definitiva
+            const senhaCorreta = "seilakkk"; 
 
             if (senhaDigitada === senhaCorreta) {
                 document.getElementById('tela-bloqueio').classList.add('escondido');
@@ -112,7 +132,7 @@
             }
         }
 
-        // 2. Criar e Salvar bloco no Realtime Database
+        // 2. Criar nova nota
         function criarBlocoNota() {
             const titulo = document.getElementById('nota-titulo').value;
             const conteudo = document.getElementById('nota-conteudo').value;
@@ -131,16 +151,14 @@
                 conteudo: conteudo,
                 senhaNota: senhaNota
             }).then(() => {
-                alert("Bloco de notas trancado com sucesso!");
+                alert("Bloco de notas criado com sucesso!");
                 document.getElementById('nota-titulo').value = '';
                 document.getElementById('nota-conteudo').value = '';
                 document.getElementById('nota-senha').value = '';
-            }).catch(erro => {
-                console.error("Erro ao salvar no banco:", erro);
-            });
+            }).catch(erro => console.error(erro));
         }
 
-        // 3. Listar as notas em tempo real
+        // 3. Listar notas na página inicial
         function carregarNotas() {
             const notasRef = ref(database, 'notas');
             onValue(notasRef, (snapshot) => {
@@ -156,32 +174,35 @@
                     const idNota = childSnapshot.key;
                     const dadosNota = childSnapshot.val();
 
-                    // Criando o elemento HTML da nota dinamicamente
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'nota-item';
                     itemDiv.innerHTML = `
-                        <strong>🔒 ${dadosNota.titulo}</strong>
+                        <strong>Acesso Restrito: 🔒 ${dadosNota.titulo}</strong>
                         <button class="btn-abrir">Desbloquear</button>
                     `;
                     
-                    // Adiciona o clique para abrir passando a ID
                     itemDiv.querySelector('button').addEventListener('click', () => abrirNota(idNota));
                     listaDiv.appendChild(itemDiv);
                 });
             });
         }
 
-        // 4. Pedir a senha da nota e exibir se estiver correta
+        // 4. Desbloquear a nota com senha e carregar no ambiente de Tela Cheia
         function abrirNota(id) {
-            const notaEspecificaRef = ref(database, 'notas/' + id);
-            get(notaEspecificaRef).then((snapshot) => {
+            const notaRef = ref(database, 'notas/' + id);
+            get(notaRef).then((snapshot) => {
                 if (snapshot.exists()) {
                     const nota = snapshot.val();
-                    const senhaDigitada = prompt(`Digite a senha definida para o bloco "${nota.titulo}":`);
+                    const senhaDigitada = prompt(`Digite a senha para gerenciar a nota "${nota.titulo}":`);
 
                     if (senhaDigitada === nota.senhaNota) {
-                        document.getElementById('modal-titulo').innerText = `📄 ${nota.titulo}`;
-                        document.getElementById('modal-texto').innerText = nota.conteudo;
+                        idNotaAtiva = id; // Guarda a ID da nota que está aberta
+                        
+                        // Configura o visual da tela cheia com os dados privados
+                        document.getElementById('modal-titulo').innerText = `📄 Editando: ${nota.titulo}`;
+                        document.getElementById('modal-texto').value = nota.conteudo;
+                        
+                        // Exibe a tela cheia
                         document.getElementById('modal-nota').classList.remove('escondido');
                     } else if (senhaDigitada !== null) { 
                         alert("❌ Senha incorreta para este bloco de notas!");
@@ -190,11 +211,46 @@
             });
         }
 
-        // 5. Fechar o Modal
+        // 5. Salvar edições feitas na nota (Disponível na tela cheia)
+        function salvarAlteracoesNota() {
+            if (!idNotaAtiva) return;
+
+            const novoConteudo = document.getElementById('modal-texto').value;
+            const notaRef = ref(database, 'notas/' + idNotaAtiva);
+
+            // Atualiza apenas o campo 'conteudo' mantendo o título e a senha originais
+            update(notaRef, {
+                conteudo: novoConteudo
+            }).then(() => {
+                alert("💾 Alterações salvas com sucesso no banco de dados!");
+            }).catch(erro => {
+                alert("Erro ao salvar alterações.");
+                console.error(erro);
+            });
+        }
+
+        // 6. Apagar a nota permanentemente do Firebase (Disponível na tela cheia)
+        function apagarNota() {
+            if (!idNotaAtiva) return;
+
+            if (confirm("⚠️ Tem certeza absoluta que deseja APAGAR esta nota para sempre?")) {
+                const notaRef = ref(database, 'notas/' + idNotaAtiva);
+                
+                remove(notaRef).then(() => {
+                    alert("🗑️ Nota apagada com sucesso!");
+                    fecharModal(); // Fecha a tela cheia já que a nota sumiu
+                }).catch(erro => {
+                    alert("Erro ao apagar a nota.");
+                    console.error(erro);
+                });
+            }
+        }
+
+        // 7. Fechar a tela cheia
         function fecharModal() {
             document.getElementById('modal-nota').classList.add('escondido');
-            document.getElementById('modal-titulo').innerText = '';
-            document.getElementById('modal-texto').innerText = '';
+            document.getElementById('modal-texto').value = '';
+            idNotaAtiva = null; // Limpa o ID ativo por segurança
         }
     </script>
 </body>
